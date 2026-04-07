@@ -273,16 +273,23 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Internal server error' });
 });
 
-// Root endpoint - info
+// Root endpoint - returns SSE if Accept header includes text/event-stream
 app.get('/', (req, res) => {
-  res.json({
-    name: 'NWO Robotics MCP Server',
-    version: '1.0.0',
-    endpoints: {
-      sse: '/sse/',
-      health: '/health'
-    }
-  });
+  const acceptHeader = req.headers.accept || '';
+  if (acceptHeader.includes('text/event-stream')) {
+    // Return SSE stream for MCP clients
+    handleSSE(req, res);
+  } else {
+    // Return JSON info for browsers
+    res.json({
+      name: 'NWO Robotics MCP Server',
+      version: '1.0.0',
+      endpoints: {
+        sse: '/sse/',
+        health: '/health'
+      }
+    });
+  }
 });
 
 // Start server
