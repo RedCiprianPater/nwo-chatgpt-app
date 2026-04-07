@@ -9,8 +9,8 @@
   "categories": ["Robotics", "IoT", "Automation"],
   "tags": ["robotics", "mcp", "iot", "swarm", "automation", "nwo"],
   "mcp_endpoint": {
-    "type": "http",
-    "url": "https://api.nwo.capital/mcp"
+    "type": "sse",
+    "url": "https://api.nwo.capital/sse"
   },
   "auth": {
     "type": "api_key",
