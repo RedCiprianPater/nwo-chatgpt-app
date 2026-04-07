@@ -10,7 +10,7 @@
   "tags": ["robotics", "mcp", "iot", "swarm", "automation", "nwo"],
   "mcp_endpoint": {
     "type": "sse",
-    "url": "https://api.nwo.capital/sse"
+    "url": "https://nwo-chatgpt-app.onrender.com/sse"
   },
   "auth": {
     "type": "api_key",
