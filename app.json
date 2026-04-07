@@ -1,0 +1,31 @@
+{
+  "schema_version": "v1",
+  "name": "NWO Robotics",
+  "id": "nwo-robotics",
+  "description": "Control robots, IoT devices, and robot swarms through natural language using the NWO Robotics MCP Server",
+  "author": "RedCiprianPater",
+  "version": "1.0.0",
+  "license": "MIT",
+  "categories": ["Robotics", "IoT", "Automation"],
+  "tags": ["robotics", "mcp", "iot", "swarm", "automation", "nwo"],
+  "mcp_endpoint": {
+    "type": "http",
+    "url": "https://api.nwo.capital/mcp"
+  },
+  "auth": {
+    "type": "api_key",
+    "header": "X-API-Key"
+  },
+  "ui": {
+    "widget": {
+      "url": "https://nwo.capital/webapp/chatgpt-widget.html",
+      "height": 600,
+      "width": 800
+    }
+  },
+  "privacy_policy_url": "https://github.com/RedCiprianPater/nwo-chatgpt-app/blob/main/PRIVACY.md",
+  "legal_info_url": "https://github.com/RedCiprianPater/nwo-chatgpt-app/blob/main/LEGAL.md",
+  "documentation_url": "https://github.com/RedCiprianPater/nwo-chatgpt-app/blob/main/README.md",
+  "support_email": "support@nwo.capital",
+  "website": "https://nwo.capital"
+}

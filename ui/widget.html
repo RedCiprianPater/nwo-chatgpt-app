@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NWO Robotics Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0a0a0a;
+            color: #00ff00;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        .header h1 {
+            font-size: 28px;
+            margin-bottom: 10px;
+            text-shadow: 0 0 10px #00ff00;
+        }
+        
+        .header p {
+            color: #888;
+        }
+        
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 20px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        .card {
+            background: #111;
+            border: 1px solid #00ff00;
+            border-radius: 8px;
+            padding: 20px;
+            transition: box-shadow 0.3s;
+        }
+        
+        .card:hover {
+            box-shadow: 0 0 20px rgba(0, 255, 0, 0.3);
+        }
+        
+        .card h3 {
+            color: #00ff00;
+            margin-bottom: 15px;
+            font-size: 18px;
+        }
+        
+        .status {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+        
+        .status-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #00ff00;
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        .metric {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid #222;
+        }
+        
+        .metric:last-child {
+            border-bottom: none;
+        }
+        
+        .metric-label {
+            color: #888;
+        }
+        
+        .metric-value {
+            color: #00ff00;
+            font-weight: bold;
+        }
+        
+        .btn {
+            background: transparent;
+            border: 1px solid #00ff00;
+            color: #00ff00;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            width: 100%;
+            margin-top: 15px;
+            transition: all 0.3s;
+        }
+        
+        .btn:hover {
+            background: #00ff00;
+            color: #000;
+        }
+        
+        .btn-danger {
+            border-color: #ff0000;
+            color: #ff0000;
+        }
+        
+        .btn-danger:hover {
+            background: #ff0000;
+            color: #fff;
+        }
+        
+        .log {
+            background: #000;
+            border: 1px solid #333;
+            border-radius: 4px;
+            padding: 10px;
+            height: 150px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        
+        .log-entry {
+            margin-bottom: 5px;
+            color: #888;
+        }
+        
+        .log-entry.success {
+            color: #00ff00;
+        }
+        
+        .log-entry.error {
+            color: #ff0000;
+        }
+        
+        .tool-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 10px;
+        }
+        
+        .tool-tag {
+            background: #1a1a1a;
+            border: 1px solid #333;
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            color: #888;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>⚡ NWO Robotics</h1>
+        <p>Control robots, IoT devices, and swarms through ChatGPT</p>
+    </div>
+    
+    <div class="grid">
+        <!-- System Status -->
+        <div class="card">
+            <h3>🔌 System Status</h3>
+            <div class="status">
+                <div class="status-dot"></div>
+                <span>MCP Server Online</span>
+            </div>
+            <div class="metric">
+                <span class="metric-label">Uptime</span>
+                <span class="metric-value" id="uptime">99.9%</span>
+            </div>
+            <div class="metric">
+                <span class="metric-label">Version</span>
+                <span class="metric-value">1.0.0</span>
+            </div>
+            <div class="metric">
+                <span class="metric-label">API Latency</span>
+                <span class="metric-value" id="latency">24ms</span>
+            </div>
+        </div>
+        
+        <!-- Active Robots -->
+        <div class="card">
+            <h3>🤖 Active Robots</h3>
+            <div class="metric">
+                <span class="metric-label">Connected</span>
+                <span class="metric-value" id="connected">3</span>
+            </div>
+            <div class="metric">
+                <span class="metric-label">Available</span>
+                <span class="metric-value" id="available">2</span>
+            </div>
+            <div class="metric">
+                <span class="metric-label">Busy</span>
+                <span class="metric-value" id="busy">1</span>
+            </div>
+            <button class="btn" onclick="refreshRobots()">Refresh</button>
+        </div>
+        
+        <!-- Swarm Status -->
+        <div class="card">
+            <h3>🐝 Swarm Status</h3>
+            <div class="metric">
+                <span class="metric-label">Active Swarms</span>
+                <span class="metric-value">1</span>
+            </div>
+            <div class="metric">
+                <span class="metric-label">Total Units</span>
+                <span class="metric-value">10</span>
+            </div>
+            <div class="metric">
+                <span class="metric-label">Last Command</span>
+                <span class="metric-value">Patrol</span>
+            </div>
+            <button class="btn" onclick="broadcastCommand()">Broadcast</button>
+        </div>
+        
+        <!-- IoT Devices -->
+        <div class="card">
+            <h3>📡 IoT Devices</h3>
+            <div class="metric">
+                <span class="metric-label">Online</span>
+                <span class="metric-value">12</span>
+            </div>
+            <div class="metric">
+                <span class="metric-label">Offline</span>
+                <span class="metric-value">2</span>
+            </div>
+            <div class="metric">
+                <span class="metric-label">Alerts</span>
+                <span class="metric-value">0</span>
+            </div>
+            <button class="btn" onclick="scanDevices()">Scan Network</button>
+        </div>
+        
+        <!-- Available Tools -->
+        <div class="card">
+            <h3>🛠️ Available Tools (60)</h3>
+            <div class="tool-list">
+                <span class="tool-tag">robot_control</span>
+                <span class="tool-tag">vla_inference</span>
+                <span class="tool-tag">task_planning</span>
+                <span class="tool-tag">sensor_fusion</span>
+                <span class="tool-tag">swarm_join</span>
+                <span class="tool-tag">iot_command</span>
+                <span class="tool-tag">safety_check</span>
+                <span class="tool-tag">+53 more</span>
+            </div>
+        </div>
+        
+        <!-- Activity Log -->
+        <div class="card">
+            <h3>📝 Activity Log</h3>
+            <div class="log" id="activityLog">
+                <div class="log-entry success">[20:00:01] Robot robot_001 connected</div>
+                <div class="log-entry">[20:00:05] Health check passed</div>
+                <div class="log-entry success">[20:01:12] Task completed: pick_and_place</div>
+                <div class="log-entry">[20:02:30] Swarm command broadcasted</div>
+            </div>
+        </div>
+        
+        <!-- Safety -->
+        <div class="card">
+            <h3>🛡️ Safety</h3>
+            <div class="metric">
+                <span class="metric-label">Emergency Stop</span>
+                <span class="metric-value">Ready</span>
+            </div>
+            <div class="metric">
+                <span class="metric-label">Collision Detection</span>
+                <span class="metric-value">Active</span>
+            </div>
+            <div class="metric">
+                <span class="metric-label">Last Check</span>
+                <span class="metric-value">Just now</span>
+            </div>
+            <button class="btn btn-danger" onclick="emergencyStop()">EMERGENCY STOP</button>
+        </div>
+    </div>
+    
+    <script>
+        function refreshRobots() {
+            log('Refreshing robot status...', 'info');
+            setTimeout(() => {
+                log('Robot status updated', 'success');
+            }, 500);
+        }
+        
+        function broadcastCommand() {
+            const command = prompt('Enter command to broadcast to swarm:');
+            if (command) {
+                log(`Broadcasting: ${command}`, 'info');
+                setTimeout(() => {
+                    log('Command broadcasted to 10 units', 'success');
+                }, 300);
+            }
+        }
+        
+        function scanDevices() {
+            log('Scanning IoT network...', 'info');
+            setTimeout(() => {
+                log('Found 14 devices (12 online, 2 offline)', 'success');
+            }, 1000);
+        }
+        
+        function emergencyStop() {
+            if (confirm('Are you sure you want to trigger EMERGENCY STOP?')) {
+                log('EMERGENCY STOP TRIGGERED', 'error');
+                alert('Emergency stop activated. All robots halted.');
+            }
+        }
+        
+        function log(message, type = 'info') {
+            const logEl = document.getElementById('activityLog');
+            const entry = document.createElement('div');
+            entry.className = `log-entry ${type}`;
+            const time = new Date().toLocaleTimeString();
+            entry.textContent = `[${time}] ${message}`;
+            logEl.insertBefore(entry, logEl.firstChild);
+        }
+        
+        // Update latency randomly
+        setInterval(() => {
+            const latency = Math.floor(Math.random() * 50) + 10;
+            document.getElementById('latency').textContent = latency + 'ms';
+        }, 5000);
+    </script>
+</body>
+</html>
