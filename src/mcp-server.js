@@ -9,55 +9,73 @@
 
 const express = require('express');
 const cors = require('cors');
-const helmet = require('helmet');
 require('dotenv').config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Middleware
-app.use(helmet());
-app.use(cors());
+// CORS - allow all origins
+app.use(cors({
+  origin: '*',
+  methods: ['GET', 'POST', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'Accept']
+}));
+
 app.use(express.json());
 
 // Store connected clients
 const clients = new Map();
 
-// SSE Endpoint - This is what OpenAI connects to
-app.get('/sse', (req, res) => {
-  // Set SSE headers
+// SSE at root - always returns SSE (no JSON fallback)
+app.get('/', (req, res) => {
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
   res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('X-Accel-Buffering', 'no'); // Disable nginx buffering
   
   const clientId = Date.now().toString();
   clients.set(clientId, res);
   
-  console.log(`Client connected: ${clientId}`);
+  console.log(`SSE Client connected: ${clientId}`);
   
-  // Send initial connection message
+  // Send connection event
+  res.write(`event: connected\n`);
   res.write(`data: ${JSON.stringify({
-    type: 'connection',
     clientId,
-    message: 'Connected to NWO Robotics MCP Server'
+    message: 'Connected to NWO Robotics MCP Server',
+    version: '1.0.0'
   })}\n\n`);
   
-  // Send capabilities
+  // Send tools list
+  res.write(`event: tools\n`);
   res.write(`data: ${JSON.stringify({
-    type: 'capabilities',
     tools: getToolDefinitions()
   })}\n\n`);
   
-  // Handle client disconnect
+  // Keep connection alive with heartbeat
+  const heartbeat = setInterval(() => {
+    res.write(`event: heartbeat\n`);
+    res.write(`data: ${JSON.stringify({ time: Date.now() })}\n\n`);
+  }, 30000);
+  
+  // Handle disconnect
   req.on('close', () => {
+    clearInterval(heartbeat);
     clients.delete(clientId);
-    console.log(`Client disconnected: ${clientId}`);
+    console.log(`SSE Client disconnected: ${clientId}`);
+  });
+  
+  req.on('error', (err) => {
+    console.error(`SSE Client error: ${err.message}`);
   });
 });
 
-// POST endpoint for tool execution (called by OpenAI)
+// POST endpoint for tool execution
 app.post('/messages', async (req, res) => {
+  // CORS headers
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  
   const { tool, params, clientId } = req.body;
   
   try {
@@ -66,63 +84,25 @@ app.post('/messages', async (req, res) => {
     // Send result back via SSE if client is connected
     const client = clients.get(clientId);
     if (client) {
+      client.write(`event: result\n`);
       client.write(`data: ${JSON.stringify({
-        type: 'tool_result',
         tool,
         result
       })}\n\n`);
     }
     
-    res.json({ success: true });
+    res.json({ success: true, clientId });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
-// Root endpoint - SSE for MCP (OpenAI expects this)
-app.get('/', (req, res) => {
-  // Check if client accepts SSE
-  const acceptHeader = req.headers.accept || '';
-  if (acceptHeader.includes('text/event-stream')) {
-    // Return SSE stream
-    res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache');
-    res.setHeader('Connection', 'keep-alive');
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    
-    const clientId = Date.now().toString();
-    clients.set(clientId, res);
-    
-    console.log(`Client connected (root): ${clientId}`);
-    
-    res.write(`data: ${JSON.stringify({
-      type: 'connection',
-      clientId,
-      message: 'Connected to NWO Robotics MCP Server'
-    })}\n\n`);
-    
-    res.write(`data: ${JSON.stringify({
-      type: 'capabilities',
-      tools: getToolDefinitions()
-    })}\n\n`);
-    
-    req.on('close', () => {
-      clients.delete(clientId);
-      console.log(`Client disconnected (root): ${clientId}`);
-    });
-  } else {
-    // Return JSON info for browser requests
-    res.json({
-      name: 'NWO Robotics MCP Server',
-      version: '1.0.0',
-      status: 'running',
-      endpoints: {
-        sse: '/',
-        messages: '/messages',
-        health: '/health'
-      }
-    });
-  }
+// OPTIONS for CORS preflight
+app.options('/messages', (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.status(200).end();
 });
 
 // Health check
@@ -130,11 +110,12 @@ app.get('/health', (req, res) => {
   res.json({ 
     status: 'healthy', 
     version: '1.0.0',
-    connectedClients: clients.size
+    connectedClients: clients.size,
+    timestamp: new Date().toISOString()
   });
 });
 
-// Get tool definitions for MCP
+// Get tool definitions
 function getToolDefinitions() {
   return [
     {
@@ -266,11 +247,16 @@ async function executeTool(tool, params) {
   return await tools[tool](params);
 }
 
+// Error handling
+app.use((err, req, res, next) => {
+  console.error('Error:', err);
+  res.status(500).json({ error: 'Internal server error' });
+});
+
 // Start server
-app.listen(PORT, () => {
-  console.log(`NWO Robotics MCP Server (SSE) running on port ${PORT}`);
-  console.log(`SSE endpoint: http://localhost:${PORT}/sse`);
-  console.log(`Messages endpoint: http://localhost:${PORT}/messages`);
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`NWO Robotics MCP Server running on port ${PORT}`);
+  console.log(`SSE endpoint: http://0.0.0.0:${PORT}/`);
 });
 
 module.exports = app;
