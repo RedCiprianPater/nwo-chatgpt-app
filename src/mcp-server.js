@@ -79,6 +79,20 @@ app.post('/messages', async (req, res) => {
   }
 });
 
+// Root endpoint - MCP server info
+app.get('/', (req, res) => {
+  res.json({
+    name: 'NWO Robotics MCP Server',
+    version: '1.0.0',
+    status: 'running',
+    endpoints: {
+      sse: '/sse',
+      messages: '/messages',
+      health: '/health'
+    }
+  });
+});
+
 // Health check
 app.get('/health', (req, res) => {
   res.json({ 
