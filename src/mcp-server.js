@@ -79,18 +79,50 @@ app.post('/messages', async (req, res) => {
   }
 });
 
-// Root endpoint - MCP server info
+// Root endpoint - SSE for MCP (OpenAI expects this)
 app.get('/', (req, res) => {
-  res.json({
-    name: 'NWO Robotics MCP Server',
-    version: '1.0.0',
-    status: 'running',
-    endpoints: {
-      sse: '/sse',
-      messages: '/messages',
-      health: '/health'
-    }
-  });
+  // Check if client accepts SSE
+  const acceptHeader = req.headers.accept || '';
+  if (acceptHeader.includes('text/event-stream')) {
+    // Return SSE stream
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    
+    const clientId = Date.now().toString();
+    clients.set(clientId, res);
+    
+    console.log(`Client connected (root): ${clientId}`);
+    
+    res.write(`data: ${JSON.stringify({
+      type: 'connection',
+      clientId,
+      message: 'Connected to NWO Robotics MCP Server'
+    })}\n\n`);
+    
+    res.write(`data: ${JSON.stringify({
+      type: 'capabilities',
+      tools: getToolDefinitions()
+    })}\n\n`);
+    
+    req.on('close', () => {
+      clients.delete(clientId);
+      console.log(`Client disconnected (root): ${clientId}`);
+    });
+  } else {
+    // Return JSON info for browser requests
+    res.json({
+      name: 'NWO Robotics MCP Server',
+      version: '1.0.0',
+      status: 'running',
+      endpoints: {
+        sse: '/',
+        messages: '/messages',
+        health: '/health'
+      }
+    });
+  }
 });
 
 // Health check
