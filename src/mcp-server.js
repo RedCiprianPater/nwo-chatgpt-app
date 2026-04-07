@@ -26,8 +26,18 @@ app.use(express.json());
 // Store connected clients
 const clients = new Map();
 
-// SSE at root - always returns SSE (no JSON fallback)
-app.get('/', (req, res) => {
+// SSE at /sse/ - OpenAI requires this path
+app.get('/sse/', (req, res) => {
+  handleSSE(req, res);
+});
+
+// Also handle /sse without trailing slash
+app.get('/sse', (req, res) => {
+  handleSSE(req, res);
+});
+
+// SSE handler function
+function handleSSE(req, res) {
   // Set SSE headers
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache, no-transform');
@@ -79,7 +89,7 @@ app.get('/', (req, res) => {
   req.on('error', (err) => {
     console.error(`SSE Client error: ${err.message}`);
   });
-});
+}
 
 // POST endpoint for tool execution
 app.post('/messages', async (req, res) => {
@@ -263,10 +273,22 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Internal server error' });
 });
 
+// Root endpoint - info
+app.get('/', (req, res) => {
+  res.json({
+    name: 'NWO Robotics MCP Server',
+    version: '1.0.0',
+    endpoints: {
+      sse: '/sse/',
+      health: '/health'
+    }
+  });
+});
+
 // Start server
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`NWO Robotics MCP Server running on port ${PORT}`);
-  console.log(`SSE endpoint: http://0.0.0.0:${PORT}/`);
+  console.log(`SSE endpoint: http://0.0.0.0:${PORT}/sse/`);
 });
 
 module.exports = app;
