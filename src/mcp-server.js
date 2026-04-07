@@ -28,18 +28,24 @@ const clients = new Map();
 
 // SSE at root - always returns SSE (no JSON fallback)
 app.get('/', (req, res) => {
+  // Set SSE headers
   res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Cache-Control', 'no-cache, no-transform');
   res.setHeader('Connection', 'keep-alive');
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('X-Accel-Buffering', 'no'); // Disable nginx buffering
+  res.setHeader('X-Accel-Buffering', 'no');
+  
+  // Disable compression for SSE
+  res.setHeader('Content-Encoding', 'identity');
   
   const clientId = Date.now().toString();
   clients.set(clientId, res);
   
   console.log(`SSE Client connected: ${clientId}`);
   
-  // Send connection event
+  // Send initial events immediately with flush
+  res.write(`:ok\n\n`); // SSE comment to establish connection
+  
   res.write(`event: connected\n`);
   res.write(`data: ${JSON.stringify({
     clientId,
@@ -47,17 +53,21 @@ app.get('/', (req, res) => {
     version: '1.0.0'
   })}\n\n`);
   
+  if (res.flush) res.flush();
+  
   // Send tools list
   res.write(`event: tools\n`);
   res.write(`data: ${JSON.stringify({
     tools: getToolDefinitions()
   })}\n\n`);
   
-  // Keep connection alive with heartbeat
+  if (res.flush) res.flush();
+  
+  // Keep connection alive with frequent heartbeat (Render timeout ~15s)
   const heartbeat = setInterval(() => {
-    res.write(`event: heartbeat\n`);
-    res.write(`data: ${JSON.stringify({ time: Date.now() })}\n\n`);
-  }, 30000);
+    res.write(`:heartbeat\n\n`); // Comment keeps connection alive
+    if (res.flush) res.flush();
+  }, 10000); // Every 10 seconds
   
   // Handle disconnect
   req.on('close', () => {
