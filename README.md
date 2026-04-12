@@ -1,331 +1,205 @@
 # NWO Robotics MCP Server
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![MCP Compatible](https://img.shields.io/badge/MCP-Compatible-green.svg)](https://modelcontextprotocol.io)
-[![Version](https://img.shields.io/badge/version-2.0.0-blue.svg)](https://github.com/RedCiprianPater/nwo-chatgpt-app)
-[![Live on Render](https://img.shields.io/badge/hosted-Render-purple.svg)](https://nwo-chatgpt-app.onrender.com)
+[![MCP](https://img.shields.io/badge/Protocol-MCP-blue)](https://modelcontextprotocol.io)
+[![Live on Render](https://img.shields.io/badge/Deployed-Render-46E3B7)](https://nwo-chatgpt-app.onrender.com/health)
+[![Node.js](https://img.shields.io/badge/Node.js-18%2B-green)](https://nodejs.org)
 
-Control real robots, IoT devices, and autonomous agent swarms through natural language — powered by the [NWO Robotics API](https://nwo.capital).
-
-This is a remote **Model Context Protocol (MCP)** server. Connect it to any MCP-compatible AI client (ChatGPT, Claude, Cursor, etc.) and start controlling robots instantly — no local installation required.
+Control robots, IoT devices, and robot swarms through Claude and other AI assistants using the [Model Context Protocol (MCP)](https://modelcontextprotocol.io). This is the **live hosted server** — no installation required.
 
 ---
 
-## MCP Endpoint
+## ⚡ Quick Connect (No Installation)
+
+The server is live. Just paste the MCP URL into your AI client:
 
 ```
 https://nwo-chatgpt-app.onrender.com/mcp
 ```
 
-| Route | Purpose |
-|-------|---------|
-| `POST /mcp` | MCP Streamable HTTP transport |
-| `GET  /health` | Health check |
-| `GET  /.well-known/mcp/server-card.json` | Smithery server metadata |
+Pass your NWO API key as a request header: `X-API-Key: sk_live_your_key`
+
+Get your API key at [nwo.capital/webapp/api-key.php](https://nwo.capital/webapp/api-key.php)
 
 ---
 
-## Connecting
+## 🔌 Connect to Claude
 
-### ChatGPT (OpenAI Apps)
-1. Go to **ChatGPT → Settings → Apps → Add App**
-2. Enter: `https://nwo-chatgpt-app.onrender.com/mcp`
-3. Start chatting with your robots
+### Claude Desktop or Claude.ai (Custom Connector)
 
-### Claude / Cursor / other MCP clients
-Add to your MCP config:
+1. Open **Settings → Connectors** (or Customize → Connectors)
+2. Click **Add custom connector**
+3. Enter the MCP URL: `https://nwo-chatgpt-app.onrender.com/mcp`
+4. Add your API key header: `X-API-Key: sk_live_your_key`
+5. Click Connect
+
+### Claude Code
+
+```bash
+claude mcp add nwo-robotics https://nwo-chatgpt-app.onrender.com/mcp \
+  --header "X-API-Key: sk_live_your_key"
+```
+
+### Health Check
+
+```
+GET https://nwo-chatgpt-app.onrender.com/health
+```
+
 ```json
-{
-  "mcpServers": {
-    "nwo-robotics": {
-      "url": "https://nwo-chatgpt-app.onrender.com/mcp",
-      "headers": {
-        "X-API-Key": "your_nwo_api_key",
-        "X-Agent-Id": "your_agent_id"
-      }
-    }
-  }
-}
-```
-
-### Smithery
-Find it at [smithery.ai](https://smithery.ai) → search **NWO Robotics**
-
----
-
-## Tools (64 total)
-
-### 🤖 VLA Inference & Models
-Send natural language instructions + camera images, receive joint action vectors in real time.
-
-| Tool | Description |
-|------|-------------|
-| `vla_inference` | Run VLA inference: instruction + images → joint actions |
-| `edge_inference` | Ultra-low-latency inference via Cloudflare edge (28ms avg) |
-| `list_models` | List all available VLA models |
-| `get_model_info` | Get detailed info for a specific model |
-| `get_streaming_config` | Get WebSocket streaming configuration |
-
-Supported models: `xiaomi-robotics-0` · `pi05` · `groot_n1.7` · `deepseek-ocr-2b`
-
----
-
-### 🦾 Robot Control & State
-
-| Tool | Description |
-|------|-------------|
-| `query_robot_state` | Joint angles, gripper state, position, battery |
-| `execute_actions` | Execute pre-computed joint action sequences |
-| `sensor_fusion` | VLA inference with camera + lidar + thermal + force + GPS |
-| `robot_query` | Quick status: active/idle, battery, current task |
-| `get_agent_status` | Tasks completed and success rate |
-
----
-
-### 🗺️ Task Planning & Learning
-
-| Tool | Description |
-|------|-------------|
-| `task_planner` | Decompose complex instruction into ordered subtasks |
-| `execute_subtask` | Execute one subtask from a multi-step plan |
-| `status_poll` | Poll task progress and completion status |
-| `learning_recommend` | Get technique recommendations for a task type |
-| `learning_log` | Log execution result so the model learns from it |
-
----
-
-### 🔑 Agent Management
-
-| Tool | Description |
-|------|-------------|
-| `register_agent` | Self-register, get API key + 100k free monthly calls |
-| `check_balance` | Check quota: used, remaining, tier, expiry |
-| `pay_upgrade` | Pay ETH to upgrade tier |
-| `create_wallet` | Create MoonPay wallet for credit card funding |
-| `register_robot` | Register a robot in the NWO system |
-| `update_agent` | Update robot capabilities or status |
-| `get_agent_info` | Get full agent profile and stats |
-
-**Quota tiers:**
-
-| Tier | Calls/month | Cost |
-|------|------------|------|
-| Free | 100,000 | $0 |
-| Prototype | 500,000 | ~0.015 ETH/mo |
-| Production | Unlimited | ~0.062 ETH/mo |
-
----
-
-### 🔍 Agent Discovery
-
-| Tool | Description |
-|------|-------------|
-| `nwo_health` | Check NWO API health |
-| `nwo_whoami` | Get identity and quota for current API key |
-| `discover_capabilities` | All execution modes, robot types, models, sensors |
-| `dry_run` | Validate task feasibility without executing |
-| `plan_task` | Generate phased execution plan |
-
----
-
-### 🔌 ROS2 Bridge — Physical Robots
-
-| Tool | Description |
-|------|-------------|
-| `ros2_list_robots` | List connected physical robots |
-| `ros2_robot_status` | Live status: battery, joints, last update |
-| `ros2_send_command` | Send named joint command |
-| `ros2_submit_action` | Submit VLA action sequence |
-| `ros2_emergency_stop` | Stop one robot (10ms response) |
-| `ros2_emergency_stop_all` | Stop ALL robots immediately |
-| `ros2_get_robot_types` | Supported types: UR5e, Panda, Spot, G1... |
-
----
-
-### 🧪 Physics Simulation
-
-| Tool | Description |
-|------|-------------|
-| `simulate_trajectory` | Simulate with physics — feasibility + warnings |
-| `check_collision` | Check for environment collisions |
-| `estimate_torques` | Estimate joint torques for a payload |
-| `validate_grasp` | Check grasp stability for shape + mass + force |
-| `plan_motion` | Collision-free motion planning with MoveIt2 |
-| `get_scene_library` | Available simulation scenes |
-| `generate_scene` | Generate synthetic scenes with NVIDIA Cosmos 3 |
-
----
-
-### 📐 Embodiment & Calibration
-
-| Tool | Description |
-|------|-------------|
-| `list_embodiments` | Browse the robot embodiment registry |
-| `get_robot_specs` | DOF, joint limits, sensors, max speed |
-| `get_normalization` | Joint normalization params for VLA inference |
-| `download_urdf` | Get URDF model for a robot type |
-| `get_test_results` | LIBERO / CALVIN / SimplerEnv benchmarks |
-| `compare_robots` | Side-by-side comparison of robot types |
-| `run_calibration` | Automatic joint offset calibration |
-| `calibrate_confidence` | Map model confidence to success probability |
-
----
-
-### 🧠 Online RL & Fine-Tuning
-
-| Tool | Description |
-|------|-------------|
-| `start_rl_training` | Start online RL session with custom rewards |
-| `submit_rl_telemetry` | Stream state/action/reward data |
-| `create_finetune_dataset` | Build dataset from logged executions |
-| `start_finetune_job` | Launch LoRA fine-tuning on a VLA model |
-
----
-
-### 🖐️ Tactile Sensing (ORCA Hand)
-
-| Tool | Description |
-|------|-------------|
-| `read_tactile` | Read 256-taxel sensor arrays per finger |
-| `process_tactile` | Assess grip quality, texture, recommended force |
-| `detect_slip` | Detect object slip in real time |
-
----
-
-### 📦 Dataset Hub
-
-| Tool | Description |
-|------|-------------|
-| `list_datasets` | 1.54M+ Unitree G1 demonstrations, 430+ hours, LeRobot format |
-
----
-
-### 🫀 Cardiac Blockchain Identity (Base Mainnet)
-
-AI agents receive a permanent soul-bound Digital ID (`rootTokenId`) on Base mainnet (Chain ID 8453).
-
-| Tool | Description |
-|------|-------------|
-| `cardiac_register_agent` | Register on-chain, get rootTokenId |
-| `cardiac_identify_agent` | Look up rootTokenId by API key hash |
-| `cardiac_renew_key` | Renew API key binding on-chain |
-| `cardiac_issue_credential` | Issue verifiable credential (task_auth, swarm_cmd...) |
-| `cardiac_check_credential` | Check if credential is valid |
-| `cardiac_grant_access` | Grant location access |
-| `cardiac_get_nonce` | Get EIP-712 nonce for signing |
-| `cardiac_check_access` | Check location access permission |
-| `cardiac_payment_process` | Process payment via smart contract |
-
-**Deployed contracts (Base Mainnet):**
-- `NWOIdentityRegistry` — `0x78455AFd5E5088F8B5fecA0523291A75De1dAfF8`
-- `NWOAccessController` — `0x29d177bedaef29304eacdc63b2d0285c459a0f50`
-- `NWOPaymentProcessor` — `0x4afa4618bb992a073dbcfbddd6d1aebc3d5abd7c`
-
----
-
-### 🔮 Cardiac Oracle
-
-| Tool | Description |
-|------|-------------|
-| `oracle_health` | Check oracle health and chain status |
-| `oracle_validate_ecg` | Validate ECG biometric for human identity |
-| `oracle_hash_ecg` | Compute cardiac hash from RR intervals |
-| `oracle_verify` | Verify recent ECG validation by hash |
-
----
-
-## Example Commands
-
-```
-"Pick up the red box from the table and place it on shelf B"
-"What is the temperature in warehouse zone 3?"
-"Run a safety check before moving robot_001 to the loading dock"
-"Deploy all available robots to patrol the perimeter"
-"What grip technique should I use for fragile glass objects?"
-"Register me as a new agent with wallet 0x123..."
-"Start a LoRA fine-tuning job on xiaomi-robotics-0"
+{ "status": "ok", "name": "NWO Robotics MCP Server", "version": "2.0.0", "tools": 85 }
 ```
 
 ---
 
-## Tech Stack
+## 🎮 Example Prompts
 
-- **Runtime**: Node.js (ES Modules)
-- **Transport**: MCP Streamable HTTP (`@modelcontextprotocol/sdk`)
-- **Framework**: Express + Helmet + CORS
-- **Hosting**: Render (starter plan, always-on)
-- **Schema validation**: Zod
-- **Blockchain**: Base Mainnet (Chain ID 8453) via NWO Relayer + Oracle
+Once connected, control robots with natural language:
+
+```
+"Run VLA inference — pick up the red box on the left"
+"Check the status of robot ur5e_001"
+"Plan a task to clean the entire warehouse"
+"Validate grasp for a 0.5kg glass cylinder"
+"Deploy swarm_alpha to patrol zone B"
+"Check my API quota and tier"
+"Register me as an agent on Base mainnet"
+"Run a dry-run before executing"
+```
 
 ---
 
-## Self-Hosting
+## 🛠️ 85 Tools Across 5 Services
+
+| Category | Tools | Service |
+|---|---|---|
+| VLA Inference & Models | 5 | nwo.capital |
+| Robot Control & State | 6 | nwo.capital |
+| Task Planning & Learning | 4 | nwo.capital |
+| Agent Management | 8 | nwo.capital |
+| Agent Discovery | 5 | nwo.capital |
+| Physics & Simulation | 7 | nwo.capital |
+| Embodiment & Calibration | 8 | nwo.capital |
+| Online RL & Fine-tuning | 4 | nwo.capital |
+| Tactile Sensing (ORCA) | 3 | nwo.capital |
+| Dataset Hub | 1 | nwo.capital |
+| Swarm | 3 | nwo.capital |
+| Tasks / Config / Billing | 6 | nwo.capital |
+| IoT / Safety / Templates | 6 | nwo.capital |
+| Custom Models | 4 | nwo.capital |
+| ROS2 Bridge | 7 | nwo-ros2-bridge.onrender.com |
+| Cardiac Oracle | 4 | nwo-oracle.onrender.com |
+| Cardiac Relayer (Base mainnet) | 14 | nwo-relayer.onrender.com |
+
+### Tool Highlights
+
+**Inference**
+- `nwo_inference` — VLA inference with natural language + images
+- `nwo_edge_inference` — ultra-low latency via global edge (~28ms)
+- `nwo_dry_run` — validate task feasibility before executing
+
+**Robot Control**
+- `nwo_execute_actions` — send joint action vectors to a robot
+- `nwo_sensor_fusion` — fuse camera, LiDAR, GPS, force sensor data
+- `ros2_emergency_stop_all` — stop all physical robots instantly
+
+**Cardiac Identity (Base Mainnet)**
+- `cardiac_register_agent` — get a soul-bound `rootTokenId` Digital ID
+- `cardiac_issue_credential` — issue task_auth, swarm_cmd, capability credentials
+- `cardiac_process_payment` — on-chain payment via NWO Payment Processor
+
+---
+
+## 🏗️ Self-Host / Development
+
+Clone and run locally:
 
 ```bash
 git clone https://github.com/RedCiprianPater/nwo-chatgpt-app.git
 cd nwo-chatgpt-app
 npm install
+```
 
-# Create .env
-echo "NWO_API_KEY=sk_live_your_key" >> .env
-echo "NWO_AGENT_ID=agent_your_id" >> .env
-echo "NWO_RELAYER_SECRET=your_relayer_secret" >> .env
-echo "NWO_ORACLE_SECRET=your_oracle_secret" >> .env
+Create a `.env` file:
 
+```env
+NWO_API_KEY=sk_live_your_key
+RELAYER_SECRET=your_relayer_secret
+ORACLE_SECRET=your_oracle_secret
+PORT=3000
+```
+
+```bash
 npm start
-# Server runs on http://localhost:10000
+# MCP endpoint: http://localhost:3000/mcp
+# Health check: http://localhost:3000/health
 ```
+
+### Deploy to Render
+
+This repo includes `render.yaml` — just connect your GitHub repo to [render.com](https://render.com) and it deploys automatically.
 
 ---
 
-## Project Structure
+## 🔐 Authentication
+
+All NWO Capital endpoints require your API key passed as a header:
 
 ```
-nwo-chatgpt-app/
-├── src/
-│   └── mcp-server.js     # Main MCP server (all 64 tools)
-├── docs/
-│   ├── README.md         # Technical docs
-│   └── SUBMISSION.md     # OpenAI submission guide
-├── ui/                   # UI assets
-├── package.json
-├── render.yaml           # Render deployment config
-├── PRIVACY.md
-└── LEGAL.md
+X-API-Key: sk_live_your_key
 ```
+
+Cardiac Oracle and Relayer endpoints additionally require their respective secrets:
+
+```
+X-Oracle-Secret: your_oracle_secret
+X-Relayer-Secret: your_relayer_secret
+```
+
+Keys are passed per-request and never stored server-side.
 
 ---
 
-## Documentation
+## 📡 Services & Base URLs
 
-- [Agent Skill File](https://nwo.capital/webapp/agent.md) — full API reference
-- [API Docs](https://nwo.capital/webapp/nwo-robotics.html)
+| Service | URL |
+|---|---|
+| NWO Capital API | `https://nwo.capital/webapp` |
+| ROS2 Bridge | `https://nwo-ros2-bridge.onrender.com` |
+| Edge Inference | `https://nwo-robotics-api-edge.ciprianpater.workers.dev` |
+| Cardiac Oracle | `https://nwo-oracle.onrender.com` |
+| Cardiac Relayer | `https://nwo-relayer.onrender.com` |
+
+---
+
+## 🔗 Related Repos
+
+- [nwo-claude-plugin](https://github.com/RedCiprianPater/nwo-claude-plugin) — TypeScript version of this server
+- [nwo-cardiac-sdk](https://github.com/RedCiprianPater/nwo-cardiac-sdk) — Cardiac Identity SDK
+
+---
+
+## 📖 Documentation
+
+- [NWO Robotics API Docs](https://nwo.capital/webapp/nwo-robotics.html)
 - [Cardiac API Docs](https://nwo.capital/webapp/nwo-cardiac.html)
+- [Agent Skill File](https://nwo.capital/agent.md)
 - [OpenAPI Spec](https://nwo.capital/openapi.yaml)
-- [Cardiac SDK](https://github.com/RedCiprianPater/nwo-cardiac-sdk)
-- [Live Demo](https://huggingface.co/spaces/PUBLICAE/nwo-robotics-api-demo)
-- [Privacy Policy](PRIVACY.md)
-- [Terms of Service](LEGAL.md)
+- [Privacy Policy](./PRIVACY.md)
+- [Legal](./LEGAL.md)
 
 ---
 
-## Links
+## 📄 License
 
-- 🌐 [NWO Capital](https://nwo.capital)
-- 🔑 [Get API Key](https://nwo.capital/webapp/api-key.php)
-- 🧬 [Cardiac Portal](https://nwocardiac.cloud)
-- 📦 [PyPI Package](https://pypi.org/project/nwo-robotics/)
-- 🤗 [HuggingFace Demo](https://huggingface.co/spaces/PUBLICAE/nwo-robotics-api-demo)
+MIT — see [LICENSE](./LICENSE)
 
----
+## 🤝 Support
 
-## Support
-
-- 📧 [support@nwo.capital](mailto:support@nwo.capital)
-- 🐛 [Open an Issue](https://github.com/RedCiprianPater/nwo-chatgpt-app/issues)
+- Email: [support@nwo.capital](mailto:support@nwo.capital)
+- Website: [nwo.capital](https://nwo.capital)
+- Issues: [GitHub Issues](https://github.com/RedCiprianPater/nwo-chatgpt-app/issues)
 
 ---
 
-## License
-
-MIT License — see [LICENSE](LICENSE) for details.
+Built with ❤️ by [NWO Capital](https://nwo.capital)
