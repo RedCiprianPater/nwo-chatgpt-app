@@ -2,9 +2,10 @@ services:
   - type: web
     name: nwo-robotics-mcp
     runtime: node
-    plan: free
+    plan: starter          # upgrade from free → no more sleep/cold-start
     buildCommand: npm install
     startCommand: npm start
+    healthCheckPath: /health
     envVars:
       - key: NODE_ENV
         value: production
