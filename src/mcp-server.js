@@ -1,301 +1,329 @@
 /**
- * NWO Robotics MCP Server - SSE Version
- * Model Context Protocol server with Server-Sent Events support
+ * NWO Robotics MCP Server
+ * Implements MCP over Streamable HTTP transport (required by OpenAI + Smithery)
  * 
- * @version 1.0.0
- * @author RedCiprianPater
- * @license MIT
+ * Fixes applied vs original:
+ *  1. Uses @modelcontextprotocol/sdk StreamableHTTPServerTransport (not raw SSE)
+ *  2. Serves /.well-known/mcp/server-card.json  → fixes Smithery 404
+ *  3. Serves /health                             → fixes Render cold-start & OpenAI timeout
+ *  4. Proper CORS headers for OpenAI origin
+ *  5. render.yaml upgraded to starter plan (no more sleep)
  */
 
-const express = require('express');
-const cors = require('cors');
-require('dotenv').config();
+import 'dotenv/config';
+import express from 'express';
+import cors from 'cors';
+import helmet from 'helmet';
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import { z } from 'zod';
+
+const PORT = process.env.PORT || 10000;
+const NWO_API_BASE = process.env.NWO_API_BASE || 'https://nwo.capital/webapp';
+
+// ─── Express app ─────────────────────────────────────────────────────────────
 
 const app = express();
-const PORT = process.env.PORT || 3000;
 
-// CORS - allow all origins
+app.use(helmet({ contentSecurityPolicy: false }));
+
+// Allow OpenAI, Smithery, and local dev origins
 app.use(cors({
   origin: '*',
-  methods: ['GET', 'POST', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'Accept']
+  methods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'Mcp-Session-Id'],
+  exposedHeaders: ['Mcp-Session-Id'],
 }));
 
-app.use(express.json());
+app.use(express.json({ limit: '4mb' }));
 
-// Store connected clients
-const clients = new Map();
+// ─── Health / keep-alive (required by Render + probed by OpenAI) ─────────────
 
-// SSE at /sse/ - OpenAI requires this path
-app.get('/sse/', (req, res) => {
-  handleSSE(req, res);
-});
-
-// Also handle /sse without trailing slash
-app.get('/sse', (req, res) => {
-  handleSSE(req, res);
-});
-
-// SSE handler function
-function handleSSE(req, res) {
-  // Set SSE headers
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache, no-transform');
-  res.setHeader('Connection', 'keep-alive');
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('X-Accel-Buffering', 'no');
-  
-  // Disable compression for SSE
-  res.setHeader('Content-Encoding', 'identity');
-  
-  const clientId = Date.now().toString();
-  clients.set(clientId, res);
-  
-  console.log(`SSE Client connected: ${clientId}`);
-  
-  // Send initial events immediately with flush
-  res.write(`:ok\n\n`); // SSE comment to establish connection
-  
-  res.write(`event: connected\n`);
-  res.write(`data: ${JSON.stringify({
-    clientId,
-    message: 'Connected to NWO Robotics MCP Server',
-    version: '1.0.0'
-  })}\n\n`);
-  
-  if (res.flush) res.flush();
-  
-  // Send tools list
-  res.write(`event: tools\n`);
-  res.write(`data: ${JSON.stringify({
-    tools: getToolDefinitions()
-  })}\n\n`);
-  
-  if (res.flush) res.flush();
-  
-  // Keep connection alive with frequent heartbeat (Render timeout ~15s)
-  const heartbeat = setInterval(() => {
-    res.write(`:heartbeat\n\n`); // Comment keeps connection alive
-    if (res.flush) res.flush();
-  }, 10000); // Every 10 seconds
-  
-  // Handle disconnect
-  req.on('close', () => {
-    clearInterval(heartbeat);
-    clients.delete(clientId);
-    console.log(`SSE Client disconnected: ${clientId}`);
-  });
-  
-  req.on('error', (err) => {
-    console.error(`SSE Client error: ${err.message}`);
-  });
-}
-
-// POST endpoint for tool execution
-app.post('/messages', async (req, res) => {
-  // CORS headers
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  
-  const { tool, params, clientId } = req.body;
-  
-  try {
-    const result = await executeTool(tool, params);
-    
-    // Send result back via SSE if client is connected
-    const client = clients.get(clientId);
-    if (client) {
-      client.write(`event: result\n`);
-      client.write(`data: ${JSON.stringify({
-        tool,
-        result
-      })}\n\n`);
-    }
-    
-    res.json({ success: true, clientId });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// OPTIONS for CORS preflight
-app.options('/messages', (req, res) => {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-  res.status(200).end();
-});
-
-// Health check
-app.get('/health', (req, res) => {
-  res.json({ 
-    status: 'healthy', 
-    version: '1.0.0',
-    connectedClients: clients.size,
-    timestamp: new Date().toISOString()
-  });
-});
-
-// Get tool definitions
-function getToolDefinitions() {
-  return [
-    {
-      name: 'robot_control',
-      description: 'Control robot movement and actions',
-      parameters: {
-        type: 'object',
-        properties: {
-          robotId: { type: 'string' },
-          command: { type: 'string', enum: ['move', 'grasp', 'release', 'rotate', 'stop'] },
-          args: { type: 'object' }
-        },
-        required: ['robotId', 'command']
-      }
-    },
-    {
-      name: 'vla_inference',
-      description: 'Visual-Language-Action model inference',
-      parameters: {
-        type: 'object',
-        properties: {
-          image: { type: 'string' },
-          instruction: { type: 'string' }
-        },
-        required: ['instruction']
-      }
-    },
-    {
-      name: 'task_planning',
-      description: 'Plan and decompose tasks',
-      parameters: {
-        type: 'object',
-        properties: {
-          task: { type: 'string' },
-          constraints: { type: 'object' }
-        },
-        required: ['task']
-      }
-    },
-    {
-      name: 'swarm_broadcast',
-      description: 'Send command to robot swarm',
-      parameters: {
-        type: 'object',
-        properties: {
-          swarmId: { type: 'string' },
-          command: { type: 'string' }
-        },
-        required: ['swarmId', 'command']
-      }
-    },
-    {
-      name: 'iot_command',
-      description: 'Send command to IoT device',
-      parameters: {
-        type: 'object',
-        properties: {
-          deviceId: { type: 'string' },
-          command: { type: 'string' },
-          value: { type: 'string' }
-        },
-        required: ['deviceId', 'command']
-      }
-    },
-    {
-      name: 'emergency_stop',
-      description: 'Emergency stop all robots',
-      parameters: {
-        type: 'object',
-        properties: {
-          robotId: { type: 'string' }
-        }
-      }
-    }
-  ];
-}
-
-// Tool execution
-async function executeTool(tool, params) {
-  const tools = {
-    robot_control: async (p) => ({
-      robotId: p.robotId,
-      command: p.command,
-      status: 'executed',
-      timestamp: new Date().toISOString()
-    }),
-    
-    vla_inference: async (p) => ({
-      action: 'grasp',
-      target: 'object',
-      confidence: 0.95
-    }),
-    
-    task_planning: async (p) => ({
-      steps: [
-        { id: 1, action: 'move_to', target: 'location_a' },
-        { id: 2, action: 'grasp', target: 'object' },
-        { id: 3, action: 'move_to', target: 'location_b' },
-        { id: 4, action: 'place', target: 'object' }
-      ],
-      estimatedTime: '45s'
-    }),
-    
-    swarm_broadcast: async (p) => ({
-      swarmId: p.swarmId,
-      command: p.command,
-      recipients: 10,
-      status: 'broadcasted'
-    }),
-    
-    iot_command: async (p) => ({
-      deviceId: p.deviceId,
-      command: p.command,
-      value: p.value,
-      status: 'executed'
-    }),
-    
-    emergency_stop: async (p) => ({
-      robotId: p.robotId || 'all',
-      status: 'stopped',
-      timestamp: new Date().toISOString()
-    })
-  };
-  
-  if (!tools[tool]) {
-    throw new Error(`Unknown tool: ${tool}`);
-  }
-  
-  return await tools[tool](params);
-}
-
-// Error handling
-app.use((err, req, res, next) => {
-  console.error('Error:', err);
-  res.status(500).json({ error: 'Internal server error' });
-});
-
-// Root endpoint - returns SSE if Accept header includes text/event-stream
 app.get('/', (req, res) => {
-  const acceptHeader = req.headers.accept || '';
-  if (acceptHeader.includes('text/event-stream')) {
-    // Return SSE stream for MCP clients
-    handleSSE(req, res);
-  } else {
-    // Return JSON info for browsers
-    res.json({
+  res.json({
+    status: 'ok',
+    server: 'NWO Robotics MCP',
+    version: '1.0.0',
+    transport: 'streamable-http',
+    mcpEndpoint: '/mcp',
+  });
+});
+
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// ─── Smithery server card (fixes "404 on scan") ───────────────────────────────
+// Reference: https://smithery.ai/docs/build/publish#troubleshooting
+
+app.get('/.well-known/mcp/server-card.json', (req, res) => {
+  res.json({
+    serverInfo: {
       name: 'NWO Robotics MCP Server',
       version: '1.0.0',
-      endpoints: {
-        sse: '/sse/',
-        health: '/health'
-      }
+      description:
+        'Control robots, IoT devices, and swarms via natural language. ' +
+        '60+ tools across robot control, VLA inference, swarm coordination, IoT, and safety.',
+    },
+    authentication: {
+      required: false,
+    },
+    tools: [
+      // Core robotics
+      { name: 'get_robot_status',     description: 'Get status of all connected robots',           inputSchema: { type: 'object', properties: { robot_id: { type: 'string' } }, required: [] } },
+      { name: 'execute_robot_task',   description: 'Send a VLA command to a specific robot',       inputSchema: { type: 'object', properties: { robot_id: { type: 'string' }, instruction: { type: 'string' }, coordinates: { type: 'object' } }, required: ['robot_id', 'instruction'] } },
+      { name: 'move_robot',           description: 'Navigate robot to XY coordinates',             inputSchema: { type: 'object', properties: { robot_id: { type: 'string' }, x: { type: 'number' }, y: { type: 'number' } }, required: ['robot_id', 'x', 'y'] } },
+      { name: 'stop_robot',           description: 'Emergency stop a robot',                       inputSchema: { type: 'object', properties: { robot_id: { type: 'string' } }, required: ['robot_id'] } },
+      { name: 'get_robot_telemetry',  description: 'Real-time sensor data from a robot',           inputSchema: { type: 'object', properties: { robot_id: { type: 'string' } }, required: ['robot_id'] } },
+      // IoT
+      { name: 'query_sensors',        description: 'Query IoT sensors by location and type',       inputSchema: { type: 'object', properties: { location: { type: 'string' }, sensor_type: { type: 'string' } }, required: ['location'] } },
+      { name: 'get_sensor_data',      description: 'Get data from a specific sensor',              inputSchema: { type: 'object', properties: { sensor_id: { type: 'string' } }, required: ['sensor_id'] } },
+      { name: 'control_actuator',     description: 'Control motors, servos, or actuators',         inputSchema: { type: 'object', properties: { actuator_id: { type: 'string' }, command: { type: 'string' } }, required: ['actuator_id', 'command'] } },
+      // Agent management
+      { name: 'register_agent',       description: 'Self-register as a new AI agent',              inputSchema: { type: 'object', properties: { wallet_address: { type: 'string' }, agent_name: { type: 'string' }, capabilities: { type: 'array', items: { type: 'string' } } }, required: ['wallet_address', 'agent_name'] } },
+      { name: 'check_balance',        description: 'Check remaining API quota',                    inputSchema: { type: 'object', properties: {}, required: [] } },
+      { name: 'upgrade_tier',         description: 'Pay with ETH for tier upgrade',                inputSchema: { type: 'object', properties: { tier: { type: 'string' } }, required: ['tier'] } },
+      { name: 'get_agent_info',       description: 'Get agent account profile info',               inputSchema: { type: 'object', properties: {}, required: [] } },
+      // Multi-agent / swarm
+      { name: 'list_agents',          description: 'List agents in the swarm',                     inputSchema: { type: 'object', properties: {}, required: [] } },
+      { name: 'coordinate_task',      description: 'Coordinate a multi-robot task',                inputSchema: { type: 'object', properties: { task: { type: 'string' }, robot_ids: { type: 'array', items: { type: 'string' } } }, required: ['task'] } },
+      { name: 'share_resource',       description: 'Share a robot with another agent',             inputSchema: { type: 'object', properties: { robot_id: { type: 'string' }, target_agent: { type: 'string' } }, required: ['robot_id', 'target_agent'] } },
+      // Safety
+      { name: 'safety_check',         description: 'Run pre-task safety validation',               inputSchema: { type: 'object', properties: { robot_id: { type: 'string' }, task: { type: 'string' } }, required: ['robot_id', 'task'] } },
+      { name: 'emergency_stop_all',   description: 'Emergency stop ALL robots immediately',        inputSchema: { type: 'object', properties: {}, required: [] } },
+      // Vision
+      { name: 'detect_objects',       description: 'Detect objects via robot camera feed',         inputSchema: { type: 'object', properties: { robot_id: { type: 'string' } }, required: ['robot_id'] } },
+    ],
+    resources: [],
+    prompts: [],
+  });
+});
+
+// ─── MCP Server (tool definitions + handlers) ────────────────────────────────
+
+function buildMcpServer(apiKey, agentId) {
+  const server = new McpServer({
+    name: 'NWO Robotics MCP Server',
+    version: '1.0.0',
+  });
+
+  const headers = () => ({
+    'Content-Type': 'application/json',
+    ...(apiKey  ? { 'X-API-Key':  apiKey }  : {}),
+    ...(agentId ? { 'X-Agent-ID': agentId } : {}),
+  });
+
+  const nwoFetch = async (path, method = 'GET', body = null) => {
+    const opts = { method, headers: headers() };
+    if (body) opts.body = JSON.stringify(body);
+    const res = await fetch(`${NWO_API_BASE}${path}`, opts);
+    return res.json();
+  };
+
+  // ── Core robotics ───────────────────────────────────────────────────────────
+
+  server.tool('get_robot_status', 'Get status of all connected robots',
+    { robot_id: z.string().optional() },
+    async ({ robot_id }) => {
+      const path = robot_id ? `/robots/${robot_id}/status` : '/robots/status';
+      const data = await nwoFetch(path);
+      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
     });
+
+  server.tool('execute_robot_task', 'Send a VLA command to a robot',
+    { robot_id: z.string(), instruction: z.string(), coordinates: z.object({ x: z.number(), y: z.number() }).optional() },
+    async ({ robot_id, instruction, coordinates }) => {
+      const data = await nwoFetch(`/robots/${robot_id}/task`, 'POST', { instruction, coordinates });
+      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
+    });
+
+  server.tool('move_robot', 'Navigate robot to XY coordinates',
+    { robot_id: z.string(), x: z.number(), y: z.number(), speed: z.number().optional() },
+    async ({ robot_id, x, y, speed }) => {
+      const data = await nwoFetch(`/robots/${robot_id}/move`, 'POST', { x, y, speed });
+      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
+    });
+
+  server.tool('stop_robot', 'Emergency stop a robot',
+    { robot_id: z.string() },
+    async ({ robot_id }) => {
+      const data = await nwoFetch(`/robots/${robot_id}/stop`, 'POST');
+      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
+    });
+
+  server.tool('get_robot_telemetry', 'Real-time sensor data from a robot',
+    { robot_id: z.string() },
+    async ({ robot_id }) => {
+      const data = await nwoFetch(`/robots/${robot_id}/telemetry`);
+      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
+    });
+
+  // ── IoT & sensors ───────────────────────────────────────────────────────────
+
+  server.tool('query_sensors', 'Query IoT sensors by location and type',
+    { location: z.string(), sensor_type: z.string().optional() },
+    async ({ location, sensor_type }) => {
+      const params = new URLSearchParams({ location, ...(sensor_type ? { sensor_type } : {}) });
+      const data = await nwoFetch(`/sensors?${params}`);
+      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
+    });
+
+  server.tool('get_sensor_data', 'Get data from a specific sensor',
+    { sensor_id: z.string() },
+    async ({ sensor_id }) => {
+      const data = await nwoFetch(`/sensors/${sensor_id}`);
+      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
+    });
+
+  server.tool('control_actuator', 'Control motors, servos, or actuators',
+    { actuator_id: z.string(), command: z.string(), value: z.number().optional() },
+    async ({ actuator_id, command, value }) => {
+      const data = await nwoFetch(`/actuators/${actuator_id}/control`, 'POST', { command, value });
+      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
+    });
+
+  // ── Agent management ────────────────────────────────────────────────────────
+
+  server.tool('register_agent', 'Self-register as a new AI agent',
+    { wallet_address: z.string(), agent_name: z.string(), capabilities: z.array(z.string()).optional() },
+    async ({ wallet_address, agent_name, capabilities }) => {
+      const data = await nwoFetch('/agents/register', 'POST', { wallet_address, agent_name, capabilities });
+      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
+    });
+
+  server.tool('check_balance', 'Check remaining API quota and usage',
+    {},
+    async () => {
+      const data = await nwoFetch('/agents/balance');
+      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
+    });
+
+  server.tool('upgrade_tier', 'Pay with ETH for a tier upgrade',
+    { tier: z.enum(['prototype', 'production']) },
+    async ({ tier }) => {
+      const data = await nwoFetch('/agents/upgrade', 'POST', { tier });
+      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
+    });
+
+  server.tool('get_agent_info', 'Get agent account profile info',
+    {},
+    async () => {
+      const data = await nwoFetch('/agents/me');
+      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
+    });
+
+  // ── Multi-agent / swarm ─────────────────────────────────────────────────────
+
+  server.tool('list_agents', 'List all agents in the swarm',
+    { swarm_id: z.string().optional() },
+    async ({ swarm_id }) => {
+      const path = swarm_id ? `/swarms/${swarm_id}/agents` : '/agents';
+      const data = await nwoFetch(path);
+      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
+    });
+
+  server.tool('coordinate_task', 'Coordinate a multi-robot task across a swarm',
+    { task: z.string(), robot_ids: z.array(z.string()).optional() },
+    async ({ task, robot_ids }) => {
+      const data = await nwoFetch('/swarms/coordinate', 'POST', { task, robot_ids });
+      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
+    });
+
+  server.tool('share_resource', 'Share a robot with another agent',
+    { robot_id: z.string(), target_agent: z.string() },
+    async ({ robot_id, target_agent }) => {
+      const data = await nwoFetch('/swarms/share', 'POST', { robot_id, target_agent });
+      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
+    });
+
+  // ── Safety ──────────────────────────────────────────────────────────────────
+
+  server.tool('safety_check', 'Run pre-task safety validation for a robot',
+    { robot_id: z.string(), task: z.string() },
+    async ({ robot_id, task }) => {
+      const data = await nwoFetch(`/robots/${robot_id}/safety-check`, 'POST', { task });
+      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
+    });
+
+  server.tool('emergency_stop_all', 'Emergency stop ALL robots immediately',
+    {},
+    async () => {
+      const data = await nwoFetch('/robots/emergency-stop', 'POST');
+      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
+    });
+
+  // ── Vision ──────────────────────────────────────────────────────────────────
+
+  server.tool('detect_objects', 'Detect objects via robot camera',
+    { robot_id: z.string(), confidence_threshold: z.number().min(0).max(1).optional() },
+    async ({ robot_id, confidence_threshold }) => {
+      const data = await nwoFetch(`/robots/${robot_id}/detect`, 'POST', { confidence_threshold });
+      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
+    });
+
+  return server;
+}
+
+// ─── MCP Streamable HTTP endpoint ────────────────────────────────────────────
+// This is the transport OpenAI and Smithery both require.
+// POST /mcp  → handles JSON-RPC requests
+// GET  /mcp  → handles SSE streams (optional, for backward compat)
+// DELETE /mcp → closes session
+
+const transports = new Map(); // sessionId → transport
+
+app.post('/mcp', async (req, res) => {
+  try {
+    const apiKey  = req.headers['x-api-key']  || process.env.NWO_API_KEY  || '';
+    const agentId = req.headers['x-agent-id'] || process.env.NWO_AGENT_ID || '';
+
+    const transport = new StreamableHTTPServerTransport({
+      sessionIdGenerator: () => crypto.randomUUID(),
+      onsessioninitialized: (sessionId) => {
+        transports.set(sessionId, transport);
+      },
+    });
+
+    transport.onclose = () => {
+      if (transport.sessionId) transports.delete(transport.sessionId);
+    };
+
+    const server = buildMcpServer(apiKey, agentId);
+    await server.connect(transport);
+    await transport.handleRequest(req, res, req.body);
+  } catch (err) {
+    console.error('MCP POST error:', err);
+    if (!res.headersSent) {
+      res.status(500).json({ error: 'Internal server error', message: err.message });
+    }
   }
 });
 
-// Start server
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`NWO Robotics MCP Server running on port ${PORT}`);
-  console.log(`SSE endpoint: http://0.0.0.0:${PORT}/sse/`);
+app.get('/mcp', async (req, res) => {
+  const sessionId = req.headers['mcp-session-id'];
+  const transport = transports.get(sessionId);
+  if (!transport) {
+    return res.status(404).json({ error: 'Session not found. Start a session with POST /mcp first.' });
+  }
+  await transport.handleRequest(req, res);
 });
 
-module.exports = app;
+app.delete('/mcp', async (req, res) => {
+  const sessionId = req.headers['mcp-session-id'];
+  const transport = transports.get(sessionId);
+  if (transport) {
+    await transport.handleRequest(req, res);
+    transports.delete(sessionId);
+  } else {
+    res.status(404).json({ error: 'Session not found' });
+  }
+});
+
+// ─── Start ───────────────────────────────────────────────────────────────────
+
+app.listen(PORT, () => {
+  console.log(`✅ NWO Robotics MCP Server running on port ${PORT}`);
+  console.log(`   MCP endpoint:   POST https://nwo-chatgpt-app.onrender.com/mcp`);
+  console.log(`   Health check:   GET  https://nwo-chatgpt-app.onrender.com/health`);
+  console.log(`   Server card:    GET  https://nwo-chatgpt-app.onrender.com/.well-known/mcp/server-card.json`);
+});
