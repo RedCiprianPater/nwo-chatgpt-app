@@ -2,6 +2,7 @@
   "name": "nwo-chatgpt-app",
   "version": "1.0.0",
   "description": "NWO Robotics MCP Server for ChatGPT",
+  "type": "module",
   "main": "src/mcp-server.js",
   "scripts": {
     "start": "node src/mcp-server.js",
