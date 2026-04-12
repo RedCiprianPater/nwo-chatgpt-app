@@ -952,11 +952,23 @@ function buildMcpServer(apiKey, agentId, relayerSecret, oracleSecret) {
 }
 
 // ─── MCP Streamable HTTP ──────────────────────────────────────────────────────
+// Sessions are stored so that initialize (POST #1) and tools/list (POST #2)
+// hit the same transport instance — fixing the "Server not initialized" error.
 
-const transports = new Map();
+const transports = new Map(); // sessionId → { transport, server }
 
 app.post('/mcp', async (req, res) => {
   try {
+    const sessionId = req.headers['mcp-session-id'];
+
+    // ── Existing session: reuse the already-initialized transport ─────────────
+    if (sessionId && transports.has(sessionId)) {
+      const { transport } = transports.get(sessionId);
+      await transport.handleRequest(req, res, req.body);
+      return;
+    }
+
+    // ── New session: build server + transport, then handle initialize ─────────
     const apiKey        = req.headers['x-api-key']        || process.env.NWO_API_KEY        || '';
     const agentId       = req.headers['x-agent-id']       || process.env.NWO_AGENT_ID       || '';
     const relayerSecret = req.headers['x-relayer-secret'] || process.env.NWO_RELAYER_SECRET  || '';
@@ -964,13 +976,20 @@ app.post('/mcp', async (req, res) => {
 
     const transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: () => crypto.randomUUID(),
-      onsessioninitialized: (sid) => transports.set(sid, transport),
+      onsessioninitialized: (sid) => {
+        transports.set(sid, { transport, server: mcpServer });
+      },
     });
-    transport.onclose = () => { if (transport.sessionId) transports.delete(transport.sessionId); };
 
     const mcpServer = buildMcpServer(apiKey, agentId, relayerSecret, oracleSecret);
+
+    transport.onclose = () => {
+      if (transport.sessionId) transports.delete(transport.sessionId);
+    };
+
     await mcpServer.connect(transport);
     await transport.handleRequest(req, res, req.body);
+
   } catch (err) {
     console.error('MCP POST error:', err);
     if (!res.headersSent) res.status(500).json({ error: 'Internal server error', message: err.message });
@@ -978,16 +997,20 @@ app.post('/mcp', async (req, res) => {
 });
 
 app.get('/mcp', async (req, res) => {
-  const transport = transports.get(req.headers['mcp-session-id']);
-  if (!transport) return res.status(404).json({ error: 'Session not found. POST /mcp first.' });
-  await transport.handleRequest(req, res);
+  const entry = transports.get(req.headers['mcp-session-id']);
+  if (!entry) return res.status(404).json({ error: 'Session not found. POST /mcp first.' });
+  await entry.transport.handleRequest(req, res);
 });
 
 app.delete('/mcp', async (req, res) => {
   const sessionId = req.headers['mcp-session-id'];
-  const transport = transports.get(sessionId);
-  if (transport) { await transport.handleRequest(req, res); transports.delete(sessionId); }
-  else res.status(404).json({ error: 'Session not found' });
+  const entry = transports.get(sessionId);
+  if (entry) {
+    await entry.transport.handleRequest(req, res);
+    transports.delete(sessionId);
+  } else {
+    res.status(404).json({ error: 'Session not found' });
+  }
 });
 
 // ─── Start ────────────────────────────────────────────────────────────────────
