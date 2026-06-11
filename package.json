@@ -1,16 +1,16 @@
 {
-  "name": "nwo-chatgpt-app",
-  "version": "2.0.0",
-  "description": "NWO Robotics MCP Server — 85 tools for robot control, swarms, IoT, Cardiac Identity, and more",
+  "name": "nwo-claude-plugin",
+  "version": "3.0.0",
+  "description": "NWO Robotics MCP Server — 201 tools across the Render gateway, ROS2 bridge, Cardiac Oracle/Relayer, NWO MR, METASTATE, NWO-ASM, and Build Your Own Robot. Render primary, PHP fallback.",
   "type": "module",
-  "main": "src/mcp-server.js",
+  "main": "dist/index.js",
   "scripts": {
-    "start":  "node src/mcp-server.js",
-    "dev":    "node --watch src/mcp-server.js",
-    "test":   "node --test",
-    "render": "bash render-start.sh"
+    "build":  "tsc",
+    "start":  "node dist/index.js",
+    "dev":    "tsx watch src/index.ts",
+    "lint":   "tsc --noEmit"
   },
-  "keywords": ["mcp", "robotics", "iot", "claude", "chatgpt", "nwo", "cardiac", "vla"],
+  "keywords": ["mcp", "claude", "robotics", "vla", "nwo", "cardiac", "iot", "swarm", "render", "byor", "metastate", "asm"],
   "author": "RedCiprianPater",
   "license": "MIT",
   "dependencies": {
@@ -22,15 +22,17 @@
     "zod":     "^3.22.0"
   },
   "devDependencies": {
-    "nodemon": "^3.0.2"
+    "@types/cors":    "^2.8.17",
+    "@types/express": "^4.17.21",
+    "@types/node":    "^20.0.0",
+    "tsx":            "^4.7.0",
+    "typescript":     "^5.4.0"
   },
-  "engines": {
-    "node": ">=18.0.0"
-  },
+  "engines": { "node": ">=18.0.0" },
   "repository": {
     "type": "git",
-    "url":  "https://github.com/RedCiprianPater/nwo-chatgpt-app.git"
+    "url":  "https://github.com/RedCiprianPater/nwo-claude-plugin.git"
   },
-  "bugs":     { "url": "https://github.com/RedCiprianPater/nwo-chatgpt-app/issues" },
+  "bugs":     { "url": "https://github.com/RedCiprianPater/nwo-claude-plugin/issues" },
   "homepage": "https://nwo.capital"
 }
